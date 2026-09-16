@@ -1,11 +1,11 @@
 import { foods } from '../data/foods.js';
 import { restaurantById } from '../data/restaurants.js';
-import { reactionWeight } from './reactions.js';
+import { resolveReaction } from './reactions.js';
 import { makeCandidateQuestion, makeDaypartQuestion, makeRestaurantQuestion, restaurantQuestionOrder, selectCustomTagQuestion, selectTraitQuestion } from './questions.js';
 
 const profileBias = (profile, food) => {
   const selected = (profile?.selectedFoods?.[food.id] || 0) * 0.18;
-  const rejected = (profile?.rejectedFoods?.[food.id] || 0) * 0.08;
+  const rejected = (profile?.rejectedFoods?.[food.id] || 0) * 0.12;
   const family = Math.min(0.55, (profile?.familyAffinity?.[food.family] || 0) * 0.07);
   const tags = (food.tags || []).reduce((sum, tag) => sum + Math.min(0.06, (profile?.tagAffinity?.[tag] || 0) * 0.008), 0);
   return selected + family + Math.min(0.35, tags) - rejected;
@@ -40,10 +40,12 @@ export function createSession({ mode='self', fastMode=false, profile, localHour=
     weakRestaurantReactions:0,
     maxQuestions:fastMode ? 8 : 28,
     lastDimensions:[],
+    adverseDimensions:{},
     timeQuestionAsked:false,
     refinementMode:false,
     refinementRound:0,
     lastShortlistIds:[],
+    visibleShortlistIds:[],
     shortlistExposure:{},
     refinementPenalty:{}
   };
@@ -60,9 +62,15 @@ function availableCandidates(session) {
 
 function rankingScore(session, candidate) {
   const exposure = session.shortlistExposure[candidate.id] || 0;
-  const novelty = exposure * 1.05;
+  const novelty = exposure * 0.82;
   const refinement = session.refinementPenalty[candidate.id] || 0;
   return candidate.score - novelty - refinement;
+}
+
+function rankedCandidates(session) {
+  return availableCandidates(session)
+    .map((candidate) => ({ ...candidate, _rankingScore:rankingScore(session, candidate) }))
+    .sort((a,b) => b._rankingScore - a._rankingScore || b.score - a.score || a.name.localeCompare(b.name));
 }
 
 function bestCandidateForDirectQuestion(session, active) {
@@ -82,19 +90,24 @@ export function getNextQuestion(session) {
     if (direct) return makeCandidateQuestion(direct, session.refinementRound);
   }
 
-  // Restaurant probing stays brief. Two weak establishment reactions switch strategy.
   if (!session.fastMode && session.questionCount < 5 && session.restaurantQuestionsAsked < 3 && session.weakRestaurantReactions < 2) {
     const restaurantId = restaurantQuestionOrder(active, session.askedIds)[0];
     if (restaurantId) return makeRestaurantQuestion(restaurantId);
   }
 
-  // Once the pool is narrow enough, exact-item questions are more useful than broad family labels.
   if (!session.fastMode && session.questionCount >= 10 && active.length <= 14) {
     const candidate = bestCandidateForDirectQuestion(session, active);
     if (candidate) return makeCandidateQuestion(candidate, session.refinementRound);
   }
 
-  const trait = selectTraitQuestion(active, session.askedIds, session.lastDimensions.slice(-2), session.questionCount, session.fastMode);
+  const trait = selectTraitQuestion(
+    active,
+    session.askedIds,
+    session.lastDimensions.slice(-2),
+    session.questionCount,
+    session.fastMode,
+    session.adverseDimensions
+  );
   if (trait) return { ...trait, type:'trait' };
 
   const customTrait = selectCustomTagQuestion(active, session.askedIds, session.questionCount);
@@ -123,16 +136,17 @@ function answerMatcher(question) {
 
 function similarityPenalty(target, candidate) {
   if (!target || target.id === candidate.id) return 0;
-  let penalty = target.family === candidate.family ? 0.42 : 0;
-  if (target.subfamily === candidate.subfamily) penalty += 0.32;
+  let penalty = target.family === candidate.family ? 0.5 : 0;
+  if (target.subfamily === candidate.subfamily) penalty += 0.38;
   const overlap = (target.tags || []).filter((tag) => candidate.tags.includes(tag)).length;
-  penalty += Math.min(0.36, overlap * 0.035);
+  penalty += Math.min(0.45, overlap * 0.04);
   return penalty;
 }
 
-export function applyReaction(session, question, reactionId) {
+export function applyReaction(session, question, reactionOrValue) {
   const matches = answerMatcher(question);
-  const weight = reactionWeight(session.profile, reactionId);
+  const reaction = resolveReaction(session.profile, reactionOrValue);
+  const { value, reactionId, weight, adverse, hardReject, severity } = reaction;
 
   session.questionCount += 1;
   session.askedIds.add(question.id?.startsWith('candidate:') ? question.id : question.id?.includes(':') ? question.id : `trait:${question.id}`);
@@ -140,40 +154,48 @@ export function applyReaction(session, question, reactionId) {
   if (question.type === 'restaurant') session.restaurantQuestionsAsked += 1;
   if (question.dimension) session.lastDimensions.push(question.dimension);
 
-  if (question.type === 'restaurant' && ['ehhh','nnngh','no','absolutely-not'].includes(reactionId)) session.weakRestaurantReactions += 1;
-  if (question.type === 'restaurant' && ['no','absolutely-not'].includes(reactionId)) session.rejectedRestaurants.add(question.restaurantId);
-  if (question.type === 'trait' && ['no','absolutely-not'].includes(reactionId)) session.hardExcludedTags.add(question.tag);
-  if (question.type === 'candidate' && ['no','absolutely-not'].includes(reactionId)) session.hardRejectedFoods.add(question.candidateId);
+  if (adverse && question.dimension) {
+    session.adverseDimensions[question.dimension] = Math.max(session.adverseDimensions[question.dimension] || 0, severity);
+  }
 
+  if (question.type === 'restaurant' && adverse) session.weakRestaurantReactions += 1;
+  if (question.type === 'restaurant' && hardReject) session.rejectedRestaurants.add(question.restaurantId);
+  if (question.type === 'trait' && hardReject) session.hardExcludedTags.add(question.tag);
+  if (question.type === 'candidate' && hardReject) session.hardRejectedFoods.add(question.candidateId);
+
+  // Matching foods take the full signal. Negative evidence never gives unrelated foods a free boost.
   for (const candidate of session.candidates) {
     if (matches(candidate)) {
       candidate.score += weight;
-    } else if (weight > 0.6) {
-      candidate.score -= weight * 0.12;
-    } else if (weight < -0.5) {
-      candidate.score += Math.min(0.35, Math.abs(weight) * 0.08);
+    } else if (weight > 0.75) {
+      candidate.score -= weight * 0.08;
     }
   }
 
-  // Time of day is context, not a hard restriction. Even Absolutely Not only re-ranks.
+  // Time is context only. A strong dislike re-ranks breakfast/dinner/etc.; it never bans the opposite time-of-day food.
   if (question.type === 'time-context') {
     session.hardExcludedTags.delete(question.daypart);
   }
 
-  if (question.type === 'restaurant' && reactionId === 'absolutely-not') {
+  if (question.type === 'restaurant' && adverse) {
     const restaurant = restaurantById[question.restaurantId];
+    const categorySeverity = severity * (hardReject ? 0.9 : 0.42);
     for (const candidate of session.candidates) {
       const categoryOverlap = restaurant?.categories?.some((category) => candidate.tags.includes(category));
-      if (categoryOverlap) candidate.score -= 0.45;
+      if (categoryOverlap) candidate.score -= categorySeverity;
     }
   }
 
-  if (question.type === 'candidate' && reactionId === 'absolutely-not') {
+  // Direct-item dislike bleeds into very similar foods proportionally, while only the far-left zone hard-eliminates the item.
+  if (question.type === 'candidate' && adverse) {
     const target = session.candidates.find((candidate) => candidate.id === question.candidateId);
-    for (const candidate of session.candidates) candidate.score -= similarityPenalty(target, candidate);
+    const similarityScale = severity * (hardReject ? 1.35 : 0.72);
+    for (const candidate of session.candidates) {
+      if (candidate.id !== question.candidateId) candidate.score -= similarityPenalty(target, candidate) * similarityScale;
+    }
   }
 
-  session.answers.push({ question:{ ...question }, reactionId, matchesCandidate:matches });
+  session.answers.push({ question:{ ...question }, reactionId, sliderValue:value, weight, matchesCandidate:matches });
   return session;
 }
 
@@ -183,41 +205,88 @@ export function rejectFood(session, candidateId) {
   if (candidate) candidate.score = -999;
 }
 
-export function noteShortlistShown(session, candidateIds=[]) {
-  session.lastShortlistIds = [...candidateIds];
+function noteExposure(session, candidateIds=[]) {
   for (const id of candidateIds) session.shortlistExposure[id] = (session.shortlistExposure[id] || 0) + 1;
 }
 
-export function beginRefinement(session, candidateIds=session.lastShortlistIds) {
+export function noteShortlistShown(session, candidateIds=[]) {
+  session.lastShortlistIds = [...candidateIds];
+  session.visibleShortlistIds = [...candidateIds];
+  noteExposure(session, candidateIds);
+}
+
+export function replaceShortlistItem(session, currentIds=session.visibleShortlistIds, rejectedId) {
+  const ids = [...currentIds];
+  const slot = ids.indexOf(rejectedId);
+  const survivors = ids.filter((id) => id !== rejectedId && !session.hardRejectedFoods.has(id));
+  const replacement = rankedCandidates(session).find((candidate) => !survivors.includes(candidate.id));
+
+  if (slot >= 0) {
+    if (replacement) ids[slot] = replacement.id;
+    else ids.splice(slot, 1);
+  }
+
+  const next = ids.filter((id, index) => id && ids.indexOf(id) === index && !session.hardRejectedFoods.has(id));
+  session.lastShortlistIds = [...next];
+  session.visibleShortlistIds = [...next];
+  if (replacement) noteExposure(session, [replacement.id]);
+  return next;
+}
+
+export function beginRefinement(session, candidateIds=session.visibleShortlistIds.length ? session.visibleShortlistIds : session.lastShortlistIds) {
   session.refinementMode = true;
   session.refinementRound += 1;
   session.lastShortlistIds = [...candidateIds];
+  session.visibleShortlistIds = [];
   session.maxQuestions = Math.max(session.maxQuestions, session.questionCount + 6);
   for (const id of candidateIds) {
-    if (!session.hardRejectedFoods.has(id)) session.refinementPenalty[id] = (session.refinementPenalty[id] || 0) + 0.8;
+    if (!session.hardRejectedFoods.has(id)) session.refinementPenalty[id] = (session.refinementPenalty[id] || 0) + 1.05;
   }
   return session;
 }
 
-export function getShortlist(session, limit=3) {
-  const active = availableCandidates(session)
-    .map((candidate) => ({ ...candidate, _rankingScore:rankingScore(session, candidate) }))
-    .sort((a,b) => b._rankingScore - a._rankingScore || b.score - a.score || a.name.localeCompare(b.name));
-
-  const top = active.slice(0, limit);
-  if (!top.length) return [];
-  const high = top[0]._rankingScore;
-  const low = top[top.length - 1]._rankingScore;
+function decorateCandidates(session, candidates) {
+  if (!candidates.length) return [];
+  const ranked = rankedCandidates(session);
+  const high = ranked[0]?._rankingScore ?? 0;
+  const low = ranked[Math.min(ranked.length - 1, 8)]?._rankingScore ?? high - 1;
   const span = Math.max(1, high - low);
 
-  return top.map((candidate, index) => {
-    const relative = top.length === 1 ? 1 : (candidate._rankingScore - low) / span;
-    const compatibility = Math.round(Math.max(38, Math.min(96, 58 + candidate.score * 6 + relative * 16)));
-    const label = index === 0 && compatibility >= 74 ? 'Strong Match' : compatibility >= 62 ? 'Good Match' : 'Possible Match';
+  return candidates.map((candidate) => {
+    const relative = Math.max(0, Math.min(1, (candidate._rankingScore - low) / span));
+    // Unlike V0.3, weak survivors are allowed to look weak; there is no artificial 38% floor.
+    const compatibility = Math.round(Math.max(1, Math.min(99, 48 + candidate._rankingScore * 8.5 + relative * 9)));
+    const label = compatibility >= 82 ? 'Strong Match'
+      : compatibility >= 66 ? 'Good Match'
+      : compatibility >= 49 ? 'Possible Match'
+      : compatibility >= 28 ? 'Weak Match'
+      : 'Barely Hanging On';
     const viableRestaurants = (candidate.restaurants || []).filter((id) => !session.rejectedRestaurants.has(id));
     const { _rankingScore, ...clean } = candidate;
     return { ...clean, compatibility, label, viableRestaurants };
   });
+}
+
+export function getShortlist(session, limit=3, preferredIds=[]) {
+  const ranked = rankedCandidates(session);
+  let top;
+
+  if (preferredIds?.length) {
+    const byId = new Map(ranked.map((candidate) => [candidate.id, candidate]));
+    top = preferredIds.map((id) => byId.get(id)).filter(Boolean).slice(0, limit);
+    const used = new Set(top.map((candidate) => candidate.id));
+    for (const candidate of ranked) {
+      if (top.length >= limit) break;
+      if (!used.has(candidate.id)) {
+        top.push(candidate);
+        used.add(candidate.id);
+      }
+    }
+  } else {
+    top = ranked.slice(0, limit);
+  }
+
+  return decorateCandidates(session, top);
 }
 
 export function remainingCount(session) {

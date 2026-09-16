@@ -169,7 +169,7 @@ function branchEligible(question, candidates) {
   return familyMatches >= Math.min(2, candidates.length) && familyMatches / Math.max(1, candidates.length) >= 0.25;
 }
 
-export function selectTraitQuestion(candidates, askedIds = new Set(), recentDimensions = [], questionCount = 0, fastMode = false) {
+export function selectTraitQuestion(candidates, askedIds = new Set(), recentDimensions = [], questionCount = 0, fastMode = false, adverseDimensions = {}) {
   const allowedStage = fastMode ? 1 : questionCount < 4 ? 1 : questionCount < 8 ? 2 : questionCount < 13 ? 3 : 4;
   const viable = traitQuestions
     .filter((question) => !askedIds.has(`trait:${question.id}`) && question.stage <= allowedStage)
@@ -178,11 +178,12 @@ export function selectTraitQuestion(candidates, askedIds = new Set(), recentDime
       const matches = candidates.filter((candidate) => candidate.tags.includes(question.tag)).length;
       const ratio = candidates.length ? matches / candidates.length : 0;
       const split = 1 - Math.abs(ratio - 0.5) * 2;
-      const repeatPenalty = recentDimensions.includes(question.dimension) ? 0.68 : 1;
+      const repeatPenalty = recentDimensions.includes(question.dimension) ? 0.58 : 1;
+      const adversePenalty = 1 - Math.min(0.76, (adverseDimensions?.[question.dimension] || 0) * 0.72);
       const viability = ratio >= 0.1 && ratio <= 0.9 ? 1 : 0.16;
       const stageTarget = fastMode ? 0 : questionCount < 3 ? 0 : questionCount < 7 ? 1 : questionCount < 11 ? 2 : questionCount < 16 ? 3 : 4;
       const stageFit = 1 - Math.min(0.62, Math.abs(question.stage - stageTarget) * 0.16);
-      return { question, score:split * repeatPenalty * viability * stageFit, ratio };
+      return { question, score:split * repeatPenalty * adversePenalty * viability * stageFit, ratio };
     })
     .filter(({ ratio }) => ratio > 0 && ratio < 1)
     .sort((a,b) => b.score - a.score || Math.abs(a.ratio - 0.5) - Math.abs(b.ratio - 0.5));
