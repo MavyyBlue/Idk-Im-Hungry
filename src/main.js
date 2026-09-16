@@ -1,10 +1,11 @@
 import { foodById } from './data/foods.js';
 import { restaurantById } from './data/restaurants.js';
+import { UNSAFE_KEYWORD_GROUPS, normalizeUnsafeKeyword } from './data/unsafe.js';
 import { sliderMood } from './engine/reactions.js';
 import { applyReaction, beginRefinement, createSession, getNextQuestion, getShortlist, noteShortlistShown, rejectFood, remainingCount, replaceShortlistItem } from './engine/session.js';
 import {
   createAccount, deleteAccount, deleteSafeFood, getActiveAccount, listAccounts, loadProfile,
-  recordFoodRejection, recordSelection, renameAccount, setActiveAccount,
+  recordFoodRejection, recordSelection, renameAccount, saveUnsafeKeywords, setActiveAccount,
   toggleSafeFoodHidden, upsertSafeFood
 } from './storage/profile.js';
 
@@ -22,6 +23,7 @@ const SAFE_FOOD_FAMILIES = [
   ['safe-food','Other'], ['chicken','Chicken'], ['burger','Burger'], ['mexican','Mexican'],
   ['pizza','Pizza'], ['breakfast','Breakfast'], ['pasta','Pasta'], ['sandwich','Sandwich'],
   ['asian-style','Asian-style'], ['seafood','Seafood'], ['comfort','Comfort food'], ['fresh','Fresh'],
+  ['bbq','BBQ'], ['mediterranean','Mediterranean'], ['indian-style','Indian-style'], ['drink','Drink'],
   ['snack-side','Snack / side'], ['frozen-dessert','Frozen dessert'], ['cake','Cake'], ['bakery-sweet','Bakery sweet']
 ];
 
@@ -30,7 +32,8 @@ const SAFE_TAG_GROUPS = [
   { label:'Texture', tags:[['crunchy','Crunchy'],['crispy','Crispy'],['soft','Soft'],['chewy','Chewy'],['creamy','Creamy'],['saucy','Saucy']] },
   { label:'Temperature', tags:[['hot','Hot'],['cold','Cold']] },
   { label:'Meal', tags:[['breakfast-food','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['meal','Meal'],['snack','Snack'],['dessert','Dessert'],['late-night','Late night']] },
-  { label:'Protein', tags:[['chicken','Chicken'],['beef','Beef'],['pork','Pork / bacon'],['seafood','Seafood'],['fish','Fish'],['shrimp','Shrimp'],['vegetarian','No meat']] },
+  { label:'Protein', tags:[['chicken','Chicken'],['beef','Beef'],['pork','Pork / bacon'],['turkey','Turkey'],['lamb','Lamb'],['seafood','Seafood'],['fish','Fish'],['shrimp','Shrimp'],['vegetarian','No meat']] },
+  { label:'Ingredients', tags:[['peanut','Peanut'],['peanut-butter','Peanut butter'],['tree-nut','Tree nuts'],['shellfish','Shellfish'],['dairy','Dairy'],['eggs','Eggs'],['mushroom','Mushroom'],['onion','Onion'],['cilantro','Cilantro'],['tomato','Tomato'],['avocado','Avocado']] },
   { label:'Format', tags:[['handheld','Handheld'],['bowl','Bowl'],['plate','Plate + fork'],['bread','Bready'],['tortilla','Tortilla'],['rice','Rice'],['noodles','Noodles'],['shareable','Shareable']] },
   { label:'Feel', tags:[['light','Light'],['filling','Filling'],['very-filling','Very filling'],['comfort','Comfort food'],['fresh','Fresh']] },
   { label:'Effort', tags:[['quick','Quick'],['drive-thru','Drive-thru'],['sit-down','Sit-down'],['grocery-bakery','Grocery bakery'],['at-home','At home']] }
@@ -54,6 +57,22 @@ function keywordGroups(selectedTags=[]) {
       <h3>${escapeHtml(group.label)}</h3>
       <div class="keyword-chips">
         ${group.tags.map(([tag,label]) => `<button type="button" class="keyword-chip ${selected.has(tag) ? 'selected' : ''}" data-keyword="${tag}" aria-pressed="${selected.has(tag)}">${escapeHtml(label)}</button>`).join('')}
+      </div>
+    </section>`).join('');
+}
+
+function unsafeKeywordGroups(selectedTags=[]) {
+  const selected = new Set(selectedTags.map(normalizeUnsafeKeyword).filter(Boolean));
+  const known = new Set(UNSAFE_KEYWORD_GROUPS.flatMap((group) => group.tags.map(([tag]) => tag)));
+  const custom = [...selected].filter((tag) => !known.has(tag));
+  const groups = custom.length
+    ? [...UNSAFE_KEYWORD_GROUPS, { label:'Custom', tags:custom.map((tag) => [tag, titleCase(tag)]) }]
+    : UNSAFE_KEYWORD_GROUPS;
+  return groups.map((group) => `
+    <section class="keyword-group">
+      <h3>${escapeHtml(group.label)}</h3>
+      <div class="keyword-chips">
+        ${group.tags.map(([tag,label]) => `<button type="button" class="keyword-chip unsafe-chip ${selected.has(tag) ? 'selected' : ''}" data-unsafe-keyword="${tag}" aria-pressed="${selected.has(tag)}">${escapeHtml(label)}</button>`).join('')}
       </div>
     </section>`).join('');
 }
@@ -101,16 +120,23 @@ function renderStart() {
         </button>
       </section>
 
-      <button class="safe-food-entry" data-action="safe-foods">
-        <span>🛟 Safe Foods</span>
-        <small>${profile.safeFoods?.filter((food) => !food.hidden).length || 0} ready</small>
-      </button>
+      <div class="food-lists-grid">
+        <button class="safe-food-entry" data-action="safe-foods">
+          <span>🛟 Safe Foods</span>
+          <small>${profile.safeFoods?.filter((food) => !food.hidden).length || 0} ready</small>
+        </button>
+        <button class="unsafe-food-entry" data-action="unsafe-foods">
+          <span>🚫 Literal Unsafe Foods</span>
+          <small>${profile.unsafeKeywords?.length || 0} hard exclusions</small>
+        </button>
+      </div>
 
       ${recent ? `<p class="recent-win">Last win: <strong>${escapeHtml(recent.name)}</strong></p>` : ''}
     </main>`;
 
   app.querySelector('[data-action="accounts"]').addEventListener('click', renderAccounts);
   app.querySelector('[data-action="safe-foods"]').addEventListener('click', renderSafeFoods);
+  app.querySelector('[data-action="unsafe-foods"]').addEventListener('click', renderUnsafeFoods);
   app.querySelector('[data-start="normal"]').addEventListener('click', () => startSession(false));
   app.querySelector('[data-start="fast"]').addEventListener('click', () => startSession(true));
 }
@@ -175,6 +201,57 @@ function renderAccounts() {
     const data = new FormData(event.currentTarget);
     createAccount(data.get('name'), data.get('role'));
     refreshAccount();
+    renderStart();
+  });
+}
+
+
+function renderUnsafeFoods() {
+  refreshAccount();
+  const selected = new Set(profile.unsafeKeywords || []);
+  app.innerHTML = `
+    <main class="screen manage-screen editor-screen">
+      <header class="page-header compact-header">
+        <button class="text-button" data-action="home">← Home</button>
+        <p class="eyebrow">${escapeHtml(account.name)} · literal unsafe foods</p>
+        <h1>Keep these out.</h1>
+        <p>Matching foods are removed before a session starts.</p>
+      </header>
+
+      <section class="unsafe-warning">For allergies or medical restrictions, still verify ingredient labels and restaurant handling.</section>
+
+      <div class="editor-card unsafe-editor">
+        <div class="keyword-picker" aria-label="Unsafe food keywords">
+          ${unsafeKeywordGroups([...selected])}
+        </div>
+        <form class="custom-unsafe-form" data-custom-unsafe-form>
+          <label>Something else<input name="keyword" maxlength="40" placeholder="sesame, pickles, mayo…"></label>
+          <button type="submit">Add keyword</button>
+        </form>
+        <button class="primary-action compact" type="button" data-save-unsafe>Save exclusions</button>
+      </div>
+    </main>`;
+
+  app.querySelector('[data-action="home"]').addEventListener('click', renderStart);
+  app.querySelectorAll('[data-unsafe-keyword]').forEach((chip) => chip.addEventListener('click', () => {
+    const next = chip.getAttribute('aria-pressed') !== 'true';
+    chip.setAttribute('aria-pressed', String(next));
+    chip.classList.toggle('selected', next);
+  }));
+  app.querySelector('[data-custom-unsafe-form]').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.elements.keyword;
+    const keyword = normalizeUnsafeKeyword(input.value);
+    if (!keyword) return;
+    const chosen = [...app.querySelectorAll('[data-unsafe-keyword][aria-pressed="true"]')].map((chip) => chip.dataset.unsafeKeyword);
+    saveUnsafeKeywords(account.id, [...chosen, keyword]);
+    profile = loadProfile(account.id);
+    renderUnsafeFoods();
+  });
+  app.querySelector('[data-save-unsafe]').addEventListener('click', () => {
+    const chosen = [...app.querySelectorAll('[data-unsafe-keyword][aria-pressed="true"]')].map((chip) => chip.dataset.unsafeKeyword);
+    saveUnsafeKeywords(account.id, chosen);
+    profile = loadProfile(account.id);
     renderStart();
   });
 }

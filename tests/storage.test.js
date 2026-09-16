@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createAccount, deleteSafeFood, getActiveAccount, listAccounts, loadProfile,
-  parseKeywords, setActiveAccount, toggleSafeFoodHidden, upsertSafeFood
+  parseKeywords, saveUnsafeKeywords, setActiveAccount, toggleSafeFoodHidden, upsertSafeFood
 } from '../src/storage/profile.js';
 
 class MemoryStorage {
@@ -56,4 +56,15 @@ test('Safe Foods support keywords, edit, hide, unhide, and delete', () => {
 
   deleteSafeFood(account.id, food.id);
   assert.equal(loadProfile(account.id).safeFoods.length, 0);
+});
+
+
+test('Literal Unsafe Food keywords normalize, persist, and stay account-specific', () => {
+  localStorage.clear();
+  const account = getActiveAccount();
+  saveUnsafeKeywords(account.id, ['Shellfish', 'peanut butter', 'shellfish']);
+  assert.deepEqual(loadProfile(account.id).unsafeKeywords, ['shellfish','peanut-butter']);
+
+  const helper = createAccount('Other','helper');
+  assert.deepEqual(loadProfile(helper.id).unsafeKeywords, []);
 });

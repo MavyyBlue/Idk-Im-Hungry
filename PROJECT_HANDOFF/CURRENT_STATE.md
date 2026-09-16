@@ -2,42 +2,39 @@
 
 ## Read this first in a new development chat
 
-Current product line: **V0.4 — continuous reactions, harsher rejection, stable shortlist replacement, and tap-first Safe Foods**.
+Current product line: **V0.5 — 500+ catalog, Literal Unsafe Foods, focused deep narrowing, and user-provided PNG app icon**.
 
 The repository is the source of truth. Preserve working behavior before adding scope.
 
 ### Current loop
 
-Choose account → start session → time-of-day context → one question at a time → slide gut reaction → broad-to-niche narrowing → three-result shortlist → pick / Nope / Keep Drilling → save result locally.
+Choose account → optional Safe/Unsafe food setup → start session → time-of-day context → one question at a time → slide gut reaction → broad-to-niche narrowing → three-result shortlist → pick / Nope / Keep Drilling → save result locally.
 
-### Implemented through V0.4
+### Implemented through V0.5
 
-- Question reactions now use one thumb-friendly 0–100 slider instead of seven buttons.
-- The slider starts at 50 / Ehhh on every question.
-- Mood zones preserve the product vocabulary and add an endpoint Absolutely Yes state.
-- Releasing the slider commits the answer and advances immediately.
-- The floating mood emoji/label follows the thumb and pops when semantic zones change.
+- 539 unique built-in food candidates, plus visible user Safe Foods.
+- Catalog expansion covers chicken, burgers, Mexican/Tex-Mex, pizza, breakfast, pasta, sandwiches/wraps, Asian-style dishes, seafood, soups, BBQ, Mediterranean, Indian-style, fresh bowls/salads, snacks, convenience foods, desserts, bakery items, and drinks.
+- Question selection progressively focuses on top-ranked candidate slices as sessions deepen, preventing the 500+ pool from trapping the engine in generic questions.
+- Walmart Chantilly & Berries cake remains a test-protected niche leaf reachable by focused questioning.
+- Literal Unsafe Foods are account-specific normalized keywords. Matching built-ins and matching Safe Foods are excluded before session scoring begins.
+- Common unsafe chips cover shellfish, fish, peanuts/peanut butter, tree nuts, dairy, eggs, gluten/wheat, proteins, and common ingredient dealbreakers.
+- Custom unsafe keywords are supported.
+- Alias matching lets a shellfish exclusion catch shrimp/crab/lobster/scallop branches.
+- Unsafe Foods are deterministic filters, not an allergy/cross-contact guarantee.
+- Safe Foods remain editable, hideable, deletable, and tap-tagged.
+- Question reactions use a continuous 0–100 slider with preserved reaction vocabulary.
 - Negative evidence is intentionally harsher than symmetric positive evidence.
-- Below-middle responses lower matching-food scores; unrelated foods do not receive a free boost.
-- The far-left Absolutely Not zone hard-eliminates matching traits or exact candidates for the current session.
-- Previously answered exact questions cannot reappear, and adverse dimensions are de-prioritized for later question selection.
-- Compatibility indicators no longer have an artificial 38% floor; weak survivors may display honestly low matches.
-- Nope hard-rejects one result, preserves the other two cards in place, and replaces only the rejected slot.
-- Keep Drilling begins a genuine refinement round and penalizes already-shown finalists.
-- Over 100 built-in specific food candidates plus user-created Safe Foods.
-- Local accounts keep separate history, affinities, ambiguity learning, and Safe Foods.
-- The first question uses device-local time as context only; it never forbids off-hours cravings.
-- Safe Foods can be added with name, category, source, emoji, and tappable keyword chips.
-- Existing custom Safe Food categories/tags are preserved when editing older V0.3 entries.
-- Safe Foods can be edited, deleted, hidden, or unhidden. Hidden foods are excluded completely.
-- Player-facing developer explanation notes were removed for a cleaner mobile surface.
+- Far-left Absolutely Not and shortlist Nope remain authoritative session exclusions.
+- Nope replaces only the rejected shortlist slot.
+- Keep Drilling starts a genuine refinement round.
+- The user-provided `Idk? / I'm Hungry` pink/beige PNG is now the PWA icon source; 192px and 512px install derivatives are produced from it.
 - Still local-first: no cloud auth/sync, backend, restaurant API, or location permission.
 
-### Next priorities after V0.4 playtesting
+### Next priorities after V0.5 playtesting
 
-1. Tune slider zone boundaries and negative-weight curve from real thumb behavior.
-2. Watch for slider-release UX issues on Android and keyboard/accessibility behavior on desktop.
-3. Check whether stable one-slot Nope replacement feels calmer than full-list reshuffling.
-4. Expand the Safe Food chip vocabulary only when repeated real entries expose gaps.
-5. Continue deepening niche food branches where the engine still terminates too generically.
-6. Revisit real account authentication only when cross-device sync is a proven user need.
+1. Watch whether 539 candidates improves specificity without making sessions feel too long.
+2. Audit missing unsafe/allergen tags when real foods expose gaps.
+3. Tune family-focus timing if the engine dives into a cuisine too early or too late.
+4. Continue expanding exact/local leaves only where playtesting shows generic gaps.
+5. Keep the unsafe system explicit about its limits; never market it as certified allergy safety.
+6. Revisit real account authentication only when cross-device sync becomes a proven need.

@@ -4,26 +4,31 @@ A mobile-first food decision helper for the moment when you know you need to eat
 
 The app asks one question at a time, learns from lightweight local history, and narrows toward specific foods without forcing the user through a giant menu.
 
-## V0.4 playable slice
+## V0.5 playable slice
 
+- 539 unique built-in food candidates before user-created Safe Foods
+- Broader cuisine and format coverage across meals, snacks, desserts, grocery/convenience foods, and drinks
+- Focused late-stage question pools so the larger catalog can still reach niche leaves
 - Local per-person accounts/profiles
-- User-created Safe Foods with edit, hide/unhide, and delete
-- Tap-first Safe Food keyword chips instead of manual keyword typing
+- User-created Safe Foods with edit, hide/unhide, delete, and tap-first keyword chips
+- Literal Unsafe Foods: account-specific hard-exclusion keywords that filter candidates before a session starts
+- Common unsafe chips plus optional custom keywords
+- Unsafe Foods override matching Safe Foods
 - Time-of-day opening context that influences but never forbids off-hours cravings
 - Continuous 0–100 reaction slider with animated mood feedback
-- Semantic slider zones including Absolutely Not, Nnngh, Ehhh, Shrug, Sure, Definitely, and Absolutely Yes
 - Harsher negative weighting than symmetric positive weighting
-- Far-left slider reactions are authoritative hard eliminations
-- Below-middle reactions suppress matching candidates without automatically deleting the entire branch
-- Three-result shortlist with compatibility indicators that can now fall genuinely low
-- Nope hard-rejects exactly one result and replaces only that slot
-- Keep Drilling starts a genuine refinement round instead of replaying the same shortlist
-- Over 100 built-in specific food candidates plus visible Safe Foods
+- Stable one-slot replacement when a shortlist result is Noped
+- Keep Drilling refinement rounds
+- User-provided pink/beige `Idk? / I'm Hungry` PNG as the PWA icon
 - Offline-friendly PWA shell with local persistence
+
+## Literal Unsafe Foods boundary
+
+Unsafe keywords are deterministic local filters over the catalog tags and names. They are useful for strong dislikes and personal restrictions, but the app is not an ingredient-certification or cross-contact system. For allergies or medical restrictions, users still need to verify labels and restaurant handling.
 
 ## Privacy and architecture
 
-V0.4 is still local-first. There is no email/password authentication, cloud sync, backend, restaurant API, payment system, or location permission. Each device stores its own accounts, Safe Foods, history, and preference learning.
+V0.5 remains local-first. There is no email/password authentication, cloud sync, backend, restaurant API, payment system, or location permission. Each device stores its own accounts, Safe Foods, Unsafe Foods, history, and preference learning.
 
 ## Tests
 

@@ -20,7 +20,8 @@ export function emptyProfile() {
       nnngh:{ matched:0, total:0 }
     },
     recentSelections:[],
-    safeFoods:[]
+    safeFoods:[],
+    unsafeKeywords:[]
   };
 }
 
@@ -45,7 +46,8 @@ export function normalizeProfile(raw={}) {
     tagAffinity:{...base.tagAffinity, ...(raw.tagAffinity || {})},
     ambiguousLearning:{...base.ambiguousLearning, ...(raw.ambiguousLearning || {})},
     recentSelections:Array.isArray(raw.recentSelections) ? raw.recentSelections : [],
-    safeFoods:Array.isArray(raw.safeFoods) ? raw.safeFoods.map(normalizeSafeFood).filter(Boolean) : []
+    safeFoods:Array.isArray(raw.safeFoods) ? raw.safeFoods.map(normalizeSafeFood).filter(Boolean) : [],
+    unsafeKeywords:parseKeywords(raw.unsafeKeywords || [])
   };
 }
 
@@ -235,6 +237,13 @@ export function toggleSafeFoodHidden(accountId, foodId) {
   const profile = loadProfile(accountId);
   const food = profile.safeFoods.find((item) => item.id === foodId);
   if (food) food.hidden = !food.hidden;
+  saveProfile(accountId, profile);
+  return profile;
+}
+
+export function saveUnsafeKeywords(accountId, keywords=[]) {
+  const profile = loadProfile(accountId);
+  profile.unsafeKeywords = parseKeywords(keywords);
   saveProfile(accountId, profile);
   return profile;
 }

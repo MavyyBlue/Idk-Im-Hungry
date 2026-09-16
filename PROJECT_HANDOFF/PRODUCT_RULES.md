@@ -21,4 +21,7 @@
 19. Keep player-facing UI free of developer explanations and implementation notes.
 20. Keep the tone comforting and playful, not diagnostic or medicalized.
 21. Preserve working functionality during refactors.
-22. Product decisions are collaborative with Mavyy; do not genericize the app's personality.
+22. Literal Unsafe Foods are authoritative account-level exclusions and override Safe Foods/history.
+23. Never describe Literal Unsafe Foods as certified allergy, ingredient, or cross-contact safety.
+24. A larger catalog must lead to more specific questioning, not a longer generic interrogation.
+25. Product decisions are collaborative with Mavyy; do not genericize the app's personality.

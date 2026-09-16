@@ -45,6 +45,10 @@ export const traitQuestions = [
   q('cake',1,'family','Cake?','cake','🍰'),
   q('bakery-sweet',1,'family','Bakery sweet?','bakery-sweet','🍪'),
   q('snack-side',1,'family','Side/snack food?','snack-side','🍟'),
+  q('bbq',1,'family','BBQ or smoked food?','bbq','🍖'),
+  q('mediterranean',1,'family','Mediterranean-ish?','mediterranean','🥙'),
+  q('indian-style',1,'family','Indian-style food?','indian-style','🍛'),
+  q('drink',1,'family','Would drinking something filling work?','drink','🥤'),
 
   q('fried',2,'preparation','Fried?','fried','🔥'),
   q('grilled',2,'preparation','Grilled?','grilled','♨️'),
@@ -54,6 +58,9 @@ export const traitQuestions = [
   q('beef',2,'protein','Beef?','beef','🥩'),
   q('pork',2,'protein','Pork or bacon?','pork','🥓'),
   q('vegetarian',2,'protein','No meat?','vegetarian','🌱'),
+  q('lamb',3,'protein','Lamb?','lamb','🍖',['mediterranean','indian-style']),
+  q('turkey',3,'protein','Turkey?','turkey','🥪',['sandwich']),
+  q('shellfish',3,'protein','Shellfish?','shellfish','🍤',['seafood','asian-style','pasta']),
   q('potato',2,'ingredient','Potatoes?','potato','🥔'),
   q('bread',2,'format','Something bready?','bread','🍞'),
   q('tortilla',2,'format','Tortilla situation?','tortilla','🌮'),
@@ -122,7 +129,9 @@ export const traitQuestions = [
   q('donut',3,'format','Donut?','donut','🍩',['bakery-sweet']),
   q('brownie',3,'format','Brownie?','brownie','🍫',['bakery-sweet']),
   q('glaze',4,'topping','Glazed?','glaze','🍩',['bakery-sweet']),
-  q('hot-fudge',4,'topping','Hot fudge involved?','hot-fudge','🍫',['frozen-dessert'])
+  q('hot-fudge',4,'topping','Hot fudge involved?','hot-fudge','🍫',['frozen-dessert']),
+  q('peanut-butter',4,'ingredient','Peanut butter?','peanut-butter','🥜',['breakfast','sandwich','frozen-dessert','cake','bakery-sweet','drink']),
+  q('tree-nut',4,'ingredient','Nutty?','tree-nut','🥜',['breakfast','frozen-dessert','cake','bakery-sweet'])
 ];
 
 export function makeDaypartQuestion(hour = new Date().getHours()) {
@@ -183,7 +192,16 @@ export function selectTraitQuestion(candidates, askedIds = new Set(), recentDime
       const viability = ratio >= 0.1 && ratio <= 0.9 ? 1 : 0.16;
       const stageTarget = fastMode ? 0 : questionCount < 3 ? 0 : questionCount < 7 ? 1 : questionCount < 11 ? 2 : questionCount < 16 ? 3 : 4;
       const stageFit = 1 - Math.min(0.62, Math.abs(question.stage - stageTarget) * 0.16);
-      return { question, score:split * repeatPenalty * adversePenalty * viability * stageFit, ratio };
+      const allAvg = candidates.reduce((sum, candidate) => sum + Number(candidate.score || 0), 0) / Math.max(1, candidates.length);
+      const matching = candidates.filter((candidate) => candidate.tags.includes(question.tag));
+      const matchAvg = matching.reduce((sum, candidate) => sum + Number(candidate.score || 0), 0) / Math.max(1, matching.length);
+      const affinityLift = Math.max(0, matchAvg - allAvg);
+      // With a 500+ catalog, rare family questions would otherwise never beat generic 50/50 traits.
+      // After the sensory opening, promote families that current answers have already lifted.
+      const familyBoost = question.dimension === 'family' && questionCount >= 6
+        ? (0.18 + Math.min(0.48, affinityLift * 0.16)) * repeatPenalty * adversePenalty
+        : 0;
+      return { question, score:(split * repeatPenalty * adversePenalty * viability * stageFit) + familyBoost, ratio };
     })
     .filter(({ ratio }) => ratio > 0 && ratio < 1)
     .sort((a,b) => b.score - a.score || Math.abs(a.ratio - 0.5) - Math.abs(b.ratio - 0.5));

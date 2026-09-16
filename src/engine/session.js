@@ -1,5 +1,6 @@
 import { foods } from '../data/foods.js';
 import { restaurantById } from '../data/restaurants.js';
+import { candidateMatchesUnsafe } from '../data/unsafe.js';
 import { resolveReaction } from './reactions.js';
 import { makeCandidateQuestion, makeDaypartQuestion, makeRestaurantQuestion, restaurantQuestionOrder, selectCustomTagQuestion, selectTraitQuestion } from './questions.js';
 
@@ -18,7 +19,9 @@ function visibleSafeFoods(profile) {
 function candidateUniverse(profile) {
   const custom = visibleSafeFoods(profile);
   const ids = new Set(custom.map((food) => food.id));
-  return [...custom, ...foods.filter((food) => !ids.has(food.id))];
+  const universe = [...custom, ...foods.filter((food) => !ids.has(food.id))];
+  const unsafe = profile?.unsafeKeywords || [];
+  return universe.filter((food) => !candidateMatchesUnsafe(food, unsafe));
 }
 
 const cloneCandidates = (profile) => candidateUniverse(profile).map((food) => ({ ...food, score:profileBias(profile, food) }));
@@ -79,14 +82,26 @@ function bestCandidateForDirectQuestion(session, active) {
     .sort((a,b) => rankingScore(session, b) - rankingScore(session, a) || a.name.localeCompare(b.name))[0] || null;
 }
 
+function questionPool(session, active) {
+  if (session.fastMode || session.questionCount < 8) return active;
+  const cap = session.questionCount < 14 ? 160
+    : session.questionCount < 20 ? 80
+    : session.questionCount < 24 ? 36
+    : 14;
+  return [...active]
+    .sort((a,b) => rankingScore(session, b) - rankingScore(session, a) || b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, cap);
+}
+
 export function getNextQuestion(session) {
   const active = availableCandidates(session);
+  const focused = questionPool(session, active);
   if (!session.timeQuestionAsked) return makeDaypartQuestion(session.localHour);
   if (session.questionCount >= session.maxQuestions) return null;
   if (active.length <= 3 && !session.refinementMode) return null;
 
-  if (session.refinementMode && active.length <= 6) {
-    const direct = bestCandidateForDirectQuestion(session, active);
+  if (session.refinementMode && focused.length <= 14) {
+    const direct = bestCandidateForDirectQuestion(session, focused);
     if (direct) return makeCandidateQuestion(direct, session.refinementRound);
   }
 
@@ -95,13 +110,13 @@ export function getNextQuestion(session) {
     if (restaurantId) return makeRestaurantQuestion(restaurantId);
   }
 
-  if (!session.fastMode && session.questionCount >= 10 && active.length <= 14) {
-    const candidate = bestCandidateForDirectQuestion(session, active);
+  if (!session.fastMode && session.questionCount >= 24 && focused.length <= 14) {
+    const candidate = bestCandidateForDirectQuestion(session, focused);
     if (candidate) return makeCandidateQuestion(candidate, session.refinementRound);
   }
 
   const trait = selectTraitQuestion(
-    active,
+    focused,
     session.askedIds,
     session.lastDimensions.slice(-2),
     session.questionCount,
@@ -110,11 +125,11 @@ export function getNextQuestion(session) {
   );
   if (trait) return { ...trait, type:'trait' };
 
-  const customTrait = selectCustomTagQuestion(active, session.askedIds, session.questionCount);
+  const customTrait = selectCustomTagQuestion(focused, session.askedIds, session.questionCount);
   if (customTrait) return customTrait;
 
   if (!session.fastMode) {
-    const candidate = bestCandidateForDirectQuestion(session, active);
+    const candidate = bestCandidateForDirectQuestion(session, focused);
     if (candidate) return makeCandidateQuestion(candidate, session.refinementRound);
   }
   return null;

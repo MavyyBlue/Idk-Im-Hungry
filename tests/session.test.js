@@ -9,7 +9,7 @@ import { reactionWeight, sliderMood, sliderWeight } from '../src/engine/reaction
 import { selectTraitQuestion } from '../src/engine/questions.js';
 
 const profile = {
-  selectedFoods:{}, rejectedFoods:{}, familyAffinity:{}, tagAffinity:{}, safeFoods:[],
+  selectedFoods:{}, rejectedFoods:{}, familyAffinity:{}, tagAffinity:{}, safeFoods:[], unsafeKeywords:[],
   ambiguousLearning:{ shrug:{matched:0,total:0}, ehhh:{matched:0,total:0}, nnngh:{matched:0,total:0} }
 };
 
@@ -19,8 +19,8 @@ function answerTime(session, reaction=78) {
   applyReaction(session, q, reaction);
 }
 
-test('dataset expands to over 100 specific candidates with unique ids', () => {
-  assert.ok(foods.length >= 100);
+test('dataset expands to at least 500 specific candidates with unique ids', () => {
+  assert.ok(foods.length >= 500);
   assert.equal(new Set(foods.map((food) => food.id)).size, foods.length);
   assert.ok(foods.every((food) => food.family && food.subfamily && Array.isArray(food.tags)));
 });
@@ -223,4 +223,54 @@ test('Safe Foods obey the same far-left elimination rules as built-ins', () => {
   const session = createSession({ profile:safeProfile });
   applyReaction(session, { id:'chicken', type:'trait', tag:'chicken', dimension:'family', prompt:'Chicken?' }, 0);
   assert.equal(activeCandidates(session).some((food) => food.id === 'safe-chicken'), false);
+});
+
+
+test('Literal Unsafe Foods removes shellfish without banning ordinary fish', () => {
+  const unsafeProfile = structuredClone(profile);
+  unsafeProfile.unsafeKeywords = ['shellfish'];
+  const session = createSession({ profile:unsafeProfile });
+  const active = activeCandidates(session);
+  assert.equal(active.some((food) => food.tags.includes('shellfish') || food.tags.includes('shrimp') || food.tags.includes('crab') || food.tags.includes('lobster')), false);
+  assert.equal(active.some((food) => food.tags.includes('salmon') || food.tags.includes('fish')), true);
+});
+
+test('peanut butter unsafe keyword removes peanut and peanut-butter candidates', () => {
+  const unsafeProfile = structuredClone(profile);
+  unsafeProfile.unsafeKeywords = ['peanut-butter'];
+  const session = createSession({ profile:unsafeProfile });
+  const active = activeCandidates(session);
+  assert.equal(active.some((food) => food.tags.includes('peanut') || food.tags.includes('peanut-butter')), false);
+});
+
+test('Literal Unsafe Foods overrides a matching Safe Food', () => {
+  const unsafeProfile = structuredClone(profile);
+  unsafeProfile.unsafeKeywords = ['shellfish'];
+  unsafeProfile.safeFoods = [
+    { id:'safe-shrimp', name:'My safe shrimp', emoji:'🍤', family:'seafood', subfamily:'custom', restaurants:[], customTags:['shrimp','shellfish'], tags:['seafood','custom','safe-food','shrimp','shellfish'], hidden:false, userAdded:true }
+  ];
+  const session = createSession({ profile:unsafeProfile });
+  assert.equal(activeCandidates(session).some((food) => food.id === 'safe-shrimp'), false);
+});
+
+test('focused questioning can still reach the niche Walmart Chantilly cake inside the 500+ catalog', () => {
+  const target = foodById['walmart-chantilly-berries-cake'];
+  const session = createSession({ profile, fastMode:false, localHour:18 });
+  const targetMatches = (question) => {
+    if (question.type === 'candidate') return question.candidateId === target.id;
+    if (question.type === 'restaurant') return target.restaurants.includes(question.restaurantId);
+    if (question.type === 'time-context') return question.daypart === 'dinner' ? target.tags.includes('meal') : target.tags.includes(question.daypart);
+    return target.tags.includes(question.tag);
+  };
+  for (let i=0; i<session.maxQuestions; i += 1) {
+    const question = getNextQuestion(session);
+    if (!question) break;
+    applyReaction(session, question, targetMatches(question) ? 92 : 22);
+  }
+  const shortlist = getShortlist(session, 3);
+  assert.ok(shortlist.some((food) => food.id === target.id));
+});
+
+test('expanded catalog has unique display names as well as unique ids', () => {
+  assert.equal(new Set(foods.map((food) => food.name.toLowerCase())).size, foods.length);
 });

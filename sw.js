@@ -1,9 +1,10 @@
-const CACHE = 'idk-im-hungry-v0.4.0';
+const CACHE = 'idk-im-hungry-v0.5.0';
 const ASSETS = [
   './', './index.html', './src/main.js', './src/styles.css',
-  './src/data/foods.js', './src/data/restaurants.js',
+  './src/data/foods.js', './src/data/restaurants.js', './src/data/unsafe.js',
   './src/engine/reactions.js', './src/engine/questions.js', './src/engine/session.js',
-  './src/storage/profile.js', './public/manifest.webmanifest', './public/icon.svg'
+  './src/storage/profile.js', './public/manifest.webmanifest',
+  './public/icon.png', './public/icon-192.png', './public/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
