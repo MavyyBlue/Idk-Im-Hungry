@@ -2,42 +2,41 @@
 
 ## Read this first in a new development chat
 
-Current product line: **V0.2 — deep narrowing / specific-food slice**.
+Current product line: **V0.3 — local accounts, Safe Foods, time context, and real refinement rounds**.
 
 The repository is the source of truth. Preserve working behavior before adding scope.
 
 ### Current loop
 
-Start → choose profile mode → brief restaurant probe or sensory-first questions → broad sensory narrowing → family/format narrowing → preparation/ingredient/detail questions → exact candidate questions when useful → three-result shortlist → select/reject → save locally.
+Choose local account → start session → time-of-day context → brief restaurant probe or sensory questions → broad-to-niche elimination → three-result shortlist → pick / Nope / Keep Drilling → save result locally.
 
-### Implemented through V0.2
+### Implemented through V0.3
 
-- Seven reactions preserved exactly: Definitely, Sure, Shrug, Ehhh, Nnngh, No, Absolutely Not.
-- Ambiguous reactions remain distinct learned signals.
-- Explicit `No` on an explicit trait/property eliminates that property for the current session; uncertain reactions never do.
-- Direct candidate `No`/`Absolutely Not` eliminates that exact item. `Absolutely Not` also penalizes close family/subfamily similarity.
-- Normal sessions can ask up to 24 questions instead of V0.1's 9.
-- “Nothing sounds good” stays intentionally fast at 7 broad questions before a shortlist.
-- Restaurant interrogation stops after two weak reactions and changes strategy.
-- Question depth is staged: broad sensory → family/format → preparation/ingredient → branch-specific detail.
-- Branch-specific prompts are gated. Cake questions such as berries/cream/frosting only appear when cake is a meaningful portion of the remaining pool.
-- Once the pool is small enough, the app asks about exact candidates instead of stopping at a generic family.
-- Food seed expanded from 30 flat candidates to 104 specific/actionable candidates across chicken, burgers, Mexican, pizza, breakfast, pasta/comfort, sandwiches/fresh, Asian-style dishes, seafood, savory sides/snacks, frozen desserts, cake, cheesecake, cookies, brownies, and donuts.
-- Walmart Chantilly & Berries cake exists as a specific candidate leaf to prove grocery-bakery specificity.
-- Candidate metadata now includes `family` and `subfamily` in addition to tags and establishments.
-- Selection learning now records family/tag affinity as a light prior while preserving hard-rejection authority.
-- Existing V0.1 local profiles are extended in place; the localStorage key is unchanged.
-- Results remain approximately three specific survivors and retain “Which sounds least bad?” / continued narrowing.
-- Local-only; no auth, backend, restaurant API, location permission, or cloud database.
+- Seven reaction states remain first-class: Definitely, Sure, Shrug, Ehhh, Nnngh, No, Absolutely Not.
+- Ambiguous reactions remain distinct and learn per local account.
+- Hard rejections remain authoritative and cannot be overridden by history.
+- Over 100 built-in specific food candidates plus user-created Safe Foods.
+- Normal mode supports up to 28 questions before refinement extensions; fast mode stays bounded at 8.
+- The first question is derived from local device time: breakfast-ish, lunch-ish, dinner-ish, or late-night. It is contextual ranking only, never a hard meal-time ban.
+- Two weak restaurant reactions switch away from establishment interrogation.
+- Stage-based questions now include broad sensory traits, families, preparations, ingredients, branch-specific details, and nitty-gritty discriminators.
+- Exact candidate questions appear when the pool becomes narrow.
+- Keep Drilling begins a real refinement round, adds question capacity, and penalizes already-shown finalists so alternatives can surface.
+- Nope hard-rejects the exact candidate for the current session; it cannot return later in that session.
+- Keep Drilling can continue even after a shortlist has reached three or fewer candidates.
+- Local accounts keep separate histories, affinities, ambiguous-reaction learning, and Safe Foods.
+- Existing V0.1/V0.2 `self` history migrates into the default local `Me` account.
+- Safe Foods can be added with a name, optional source/place, category, emoji, and comma-separated keywords.
+- Safe Foods can be edited, deleted, hidden, or unhidden. Hidden means fully excluded from recommendation sessions until restored.
+- Safe Foods are not guaranteed recommendations: current-session answers can eliminate them like any other food.
+- User keywords can become late-stage personalized questions when useful.
+- Still local-first: no email/password auth, cloud sync, backend, restaurant API, or location permission.
 
-### Regression state
+### Next priorities after V0.3 playtesting
 
-V0.2 overlay currently passes 13/13 Node regression tests, including dataset uniqueness, specific Chantilly leaf, ambiguous reaction ordering/learning, trait and exact-item hard rejection, deeper normal questioning, fast-mode cap, restaurant strategy switching, and branch-specific cake-question eligibility.
-
-### Next player-testing priorities
-
-1. Run real sessions and note whether 24 questions feels useful or tiring; do not shorten only because the number looks large.
-2. Identify branches that still land on a generic result and deepen only those branches.
-3. Expand establishment-specific leaves based on foods Mavyy and partner actually encounter.
-4. Tune branch-specific wording so questions sound like Mavyy helping someone choose, not a taxonomy quiz.
-5. Add result diversity rules only if three near-duplicates become frustrating; specificity is currently more important than artificial variety.
+1. Test whether refinement rounds actually feel different rather than merely mathematically different.
+2. Observe how users describe Safe Foods and which keyword prompts need friendlier aliases.
+3. Expand exact-item coverage where built-in branches still terminate too generically.
+4. Decide whether account sync/auth is justified only after local account behavior proves useful.
+5. Add account export/import before cloud sync if users need backup portability.
+6. Keep profiling and settings surfaces focused; do not turn the app into a dashboard.

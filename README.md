@@ -4,31 +4,27 @@ A mobile-first food decision helper for the moment when you know you need to eat
 
 Instead of presenting a giant menu, the app asks one low-pressure question at a time and treats reactions like **Shrug**, **Ehhh**, and **Nnngh** as real signals rather than collapsing them into “No.”
 
-## V0.2 — deep narrowing
+## V0.3
 
-V0.2 changes the engine from a small flat food list into a deeper Akinator-style narrowing system.
-
-- Choosing for myself / helping someone choose profiles
-- Brief restaurant-first probing using a Bartlesville, Oklahoma starter set
-- Automatic strategy switch after weak restaurant reactions
-- “I’m hungry and nothing sounds good” 7-question sensory-first mode
-- 104 specific/actionable food candidates across savory, breakfast, snack, grocery-bakery, and dessert branches
-- Family/subfamily metadata plus sensory, ingredient, preparation, format, and effort traits
-- Staged broad → family → preparation → nitty-gritty questioning
-- Branch-specific detail prompts only when relevant
-- Exact candidate questions once the pool is narrow enough
+- Local named accounts for choosing for yourself or helping someone else
+- Separate learning/history/Safe Foods per account
+- Existing V0.1/V0.2 self history migrates into the default `Me` account
+- Safe Food catalog with add, edit, hide/unhide, and delete
+- User-added Safe Foods accept optional source/place plus keyword tags
+- Hidden Safe Foods are removed from recommendation sessions without deleting them
+- First question is time-aware using the device clock, but meal timing remains a preference rather than a restriction
+- Over 100 built-in specific candidates plus user-created exact foods
+- Broad-to-niche staged questioning with branch-specific detail prompts
+- Exact-candidate questions when the pool becomes narrow
+- Keep Drilling starts a real refinement round and pushes previously shown finalists downward so alternatives can surface
+- Nope is a hard session rejection and rejected foods cannot return
+- “Nothing sounds good” mode remains intentionally short
 - Seven-reaction vocabulary preserved
-- Three-candidate shortlist with compatibility labels
-- Hard property and exact-food rejection authority
-- Lightweight local learning for ambiguous reactions plus selected family/tag affinity
-- Backward-compatible local-only history using the existing `localStorage` profile key
 - Installable/offline-friendly PWA shell
-
-A motivating specificity case is represented directly in the seed data: **Walmart Chantilly & Berries cake** is a concrete leaf under the cake/grocery-bakery branch rather than merely returning “cake.” The same depth model applies to savory categories too.
 
 ## Privacy and architecture
 
-There is no account system, backend, live location permission, restaurant API, or cloud database. Establishment data is an editable seed dataset. Preference history stays in the browser on the device that created it.
+V0.3 still has no backend, cloud database, email/password authentication, location permission, payments, or restaurant API. “Accounts” are named local profiles stored in the browser on this device. Safe Foods and preference history stay local.
 
 ## Tests
 
@@ -50,4 +46,4 @@ The repository uses `.github/workflows/mobile-import.yml` to support phone-first
 6. Tests run and the expanded source is committed.
 7. GitHub Pages is deployed from the verified static source.
 
-Do not use “Re-run jobs” on an old ZIP-import run after its expanded-source commit has advanced `main`; start the workflow from current `main` instead if a clean deployment-only run is needed.
+The workflow file itself is protected from ZIP overlays so a bad patch cannot silently replace the importer while it is running.

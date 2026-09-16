@@ -1,4 +1,4 @@
-const CACHE = 'idk-im-hungry-v0.2.0';
+const CACHE = 'idk-im-hungry-v0.3.0';
 const ASSETS = [
   './', './index.html', './src/main.js', './src/styles.css',
   './src/data/foods.js', './src/data/restaurants.js',
