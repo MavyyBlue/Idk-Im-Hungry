@@ -1,0 +1,124 @@
+name: IDK Hungry mobile import and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: idk-hungry-pages
+  cancel-in-progress: true
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Import uploaded source overlay
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f idk-source.zip ]; then
+            IMPORT_DIR="$RUNNER_TEMP/idk-hungry-import"
+            rm -rf "$IMPORT_DIR"
+            mkdir -p "$IMPORT_DIR"
+
+            if zipinfo -1 idk-source.zip | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+              echo "Unsafe path detected in idk-source.zip"
+              exit 1
+            fi
+
+            unzip -q idk-source.zip -d "$IMPORT_DIR"
+            if [ ! -f "$IMPORT_DIR/idk-patch.json" ]; then
+              echo "idk-patch.json is missing"
+              exit 1
+            fi
+
+            FORMAT="$(python3 -c 'import json; print(json.load(open("'"$IMPORT_DIR"'/idk-patch.json"))["format"])')"
+            if [ "$FORMAT" != "1" ]; then
+              echo "Unsupported patch format: $FORMAT"
+              exit 1
+            fi
+
+            rsync -a --exclude='.git/' --exclude='.github/workflows/' --exclude='idk-patch.json' "$IMPORT_DIR/" ./
+
+            python3 - "$IMPORT_DIR/idk-patch.json" <<'PY2'
+          import json, pathlib, shutil, sys
+          manifest = json.load(open(sys.argv[1], encoding='utf-8'))
+          root = pathlib.Path.cwd().resolve()
+          for raw in manifest.get('delete', []):
+              rel = pathlib.PurePosixPath(str(raw))
+              if rel.is_absolute() or '..' in rel.parts or str(rel).startswith('.github/workflows/'):
+                  raise SystemExit(f'Unsafe delete path: {raw}')
+              target = (root / pathlib.Path(*rel.parts)).resolve()
+              if root not in target.parents and target != root:
+                  raise SystemExit(f'Delete path escapes repository: {raw}')
+              if target.is_dir():
+                  shutil.rmtree(target)
+              elif target.exists() or target.is_symlink():
+                  target.unlink()
+          PY2
+
+            rm -rf "$IMPORT_DIR"
+            rm -f idk-source.zip
+
+            git config user.name "idk-hungry-build-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "Import IDK Hungry source overlay [skip ci]"
+              git push
+            fi
+          fi
+
+          if [ -f index.html ] && [ -f package.json ] && [ -f src/main.js ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Importer is installed. Upload idk-source.zip to bootstrap the app."
+          fi
+
+      - name: Set up Node
+        if: steps.source.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run regression tests
+        if: steps.source.outputs.ready == 'true'
+        run: npm test
+
+      - name: Prepare static site
+        if: steps.source.outputs.ready == 'true'
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp index.html sw.js _site/
+          cp -R src public _site/
+
+      - name: Configure GitHub Pages
+        if: steps.source.outputs.ready == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: steps.source.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./_site
+
+      - name: Deploy GitHub Pages
+        if: steps.source.outputs.ready == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
