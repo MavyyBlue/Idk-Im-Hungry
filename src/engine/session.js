@@ -1,12 +1,17 @@
 import { foods } from '../data/foods.js';
 import { restaurantById } from '../data/restaurants.js';
 import { reactionWeight } from './reactions.js';
-import { makeRestaurantQuestion, restaurantQuestionOrder, selectTraitQuestion } from './questions.js';
+import { makeCandidateQuestion, makeRestaurantQuestion, restaurantQuestionOrder, selectTraitQuestion } from './questions.js';
 
-const cloneCandidates = (profile) => foods.map((food) => ({
-  ...food,
-  score: ((profile?.selectedFoods?.[food.id] || 0) * 0.18) - ((profile?.rejectedFoods?.[food.id] || 0) * 0.08)
-}));
+const profileBias = (profile, food) => {
+  const selected = (profile?.selectedFoods?.[food.id] || 0) * 0.18;
+  const rejected = (profile?.rejectedFoods?.[food.id] || 0) * 0.08;
+  const family = Math.min(0.55, (profile?.familyAffinity?.[food.family] || 0) * 0.07);
+  const tags = food.tags.reduce((sum, tag) => sum + Math.min(0.06, (profile?.tagAffinity?.[tag] || 0) * 0.008), 0);
+  return selected + family + Math.min(0.35, tags) - rejected;
+};
+
+const cloneCandidates = (profile) => foods.map((food) => ({ ...food, score:profileBias(profile, food) }));
 
 export function createSession({ mode='self', fastMode=false, profile }) {
   return {
@@ -21,7 +26,8 @@ export function createSession({ mode='self', fastMode=false, profile }) {
     hardRejectedFoods:new Set(),
     questionCount:0,
     restaurantQuestionsAsked:0,
-    maxQuestions:fastMode ? 6 : 9,
+    weakRestaurantReactions:0,
+    maxQuestions:fastMode ? 7 : 24,
     lastDimensions:[]
   };
 }
@@ -35,25 +41,53 @@ function availableCandidates(session) {
   });
 }
 
+function bestCandidateForDirectQuestion(session, active) {
+  return [...active]
+    .filter((candidate) => !session.askedIds.has(`candidate:${candidate.id}`))
+    .sort((a,b) => b.score - a.score || a.name.localeCompare(b.name))[0] || null;
+}
+
 export function getNextQuestion(session) {
   const active = availableCandidates(session);
   if (session.questionCount >= session.maxQuestions || active.length <= 3) return null;
 
-  if (!session.fastMode && session.restaurantQuestionsAsked < 4) {
+  // Restaurant probing is intentionally brief. Two weak establishment reactions
+  // switch strategy instead of repeatedly throwing restaurant names at the user.
+  if (!session.fastMode && session.questionCount < 4 && session.restaurantQuestionsAsked < 3 && session.weakRestaurantReactions < 2) {
     const restaurantId = restaurantQuestionOrder(active, session.askedIds)[0];
     if (restaurantId) return makeRestaurantQuestion(restaurantId);
   }
 
-  const trait = selectTraitQuestion(active, session.askedIds, session.lastDimensions.slice(-2));
-  if (!trait) return null;
-  return { ...trait, type:'trait' };
+  // Once the pool is meaningfully narrow, ask about exact foods/items rather than
+  // stopping at a family such as "cake" or "burger".
+  if (!session.fastMode && session.questionCount >= 9 && active.length <= 12) {
+    const candidate = bestCandidateForDirectQuestion(session, active);
+    if (candidate) return makeCandidateQuestion(candidate);
+  }
+
+  const trait = selectTraitQuestion(active, session.askedIds, session.lastDimensions.slice(-2), session.questionCount, session.fastMode);
+  if (trait) return { ...trait, type:'trait' };
+
+  if (!session.fastMode) {
+    const candidate = bestCandidateForDirectQuestion(session, active);
+    if (candidate) return makeCandidateQuestion(candidate);
+  }
+  return null;
 }
 
 function answerMatcher(question) {
-  if (question.type === 'restaurant') {
-    return (candidate) => candidate.restaurants.includes(question.restaurantId);
-  }
+  if (question.type === 'restaurant') return (candidate) => candidate.restaurants.includes(question.restaurantId);
+  if (question.type === 'candidate') return (candidate) => candidate.id === question.candidateId;
   return (candidate) => candidate.tags.includes(question.tag);
+}
+
+function similarityPenalty(target, candidate) {
+  if (!target || target.id === candidate.id) return 0;
+  let penalty = target.family === candidate.family ? 0.42 : 0;
+  if (target.subfamily === candidate.subfamily) penalty += 0.32;
+  const overlap = target.tags.filter((tag) => candidate.tags.includes(tag)).length;
+  penalty += Math.min(0.36, overlap * 0.035);
+  return penalty;
 }
 
 export function applyReaction(session, question, reactionId) {
@@ -61,15 +95,21 @@ export function applyReaction(session, question, reactionId) {
   const weight = reactionWeight(session.profile, reactionId);
 
   session.questionCount += 1;
-  session.askedIds.add(question.type === 'restaurant' ? question.id : `trait:${question.id}`);
+  session.askedIds.add(question.id?.includes(':') ? question.id : `trait:${question.id}`);
   if (question.type === 'restaurant') session.restaurantQuestionsAsked += 1;
   if (question.dimension) session.lastDimensions.push(question.dimension);
 
+  if (question.type === 'restaurant' && ['ehhh','nnngh','no','absolutely-not'].includes(reactionId)) {
+    session.weakRestaurantReactions += 1;
+  }
   if (question.type === 'restaurant' && ['no','absolutely-not'].includes(reactionId)) {
     session.rejectedRestaurants.add(question.restaurantId);
   }
-  if (question.type === 'trait' && reactionId === 'absolutely-not') {
+  if (question.type === 'trait' && ['no','absolutely-not'].includes(reactionId)) {
     session.hardExcludedTags.add(question.tag);
+  }
+  if (question.type === 'candidate' && ['no','absolutely-not'].includes(reactionId)) {
+    session.hardRejectedFoods.add(question.candidateId);
   }
 
   for (const candidate of session.candidates) {
@@ -85,16 +125,17 @@ export function applyReaction(session, question, reactionId) {
   if (question.type === 'restaurant' && reactionId === 'absolutely-not') {
     const restaurant = restaurantById[question.restaurantId];
     for (const candidate of session.candidates) {
-      const categoryOverlap = restaurant.categories.some((category) => candidate.tags.includes(category));
+      const categoryOverlap = restaurant?.categories?.some((category) => candidate.tags.includes(category));
       if (categoryOverlap) candidate.score -= 0.45;
     }
   }
 
-  session.answers.push({
-    question:{ ...question },
-    reactionId,
-    matchesCandidate:matches
-  });
+  if (question.type === 'candidate' && reactionId === 'absolutely-not') {
+    const target = session.candidates.find((candidate) => candidate.id === question.candidateId);
+    for (const candidate of session.candidates) candidate.score -= similarityPenalty(target, candidate);
+  }
+
+  session.answers.push({ question:{ ...question }, reactionId, matchesCandidate:matches });
   return session;
 }
 
@@ -126,4 +167,8 @@ export function getShortlist(session, limit=3) {
 
 export function remainingCount(session) {
   return availableCandidates(session).length;
+}
+
+export function activeCandidates(session) {
+  return availableCandidates(session).map((candidate) => ({...candidate}));
 }

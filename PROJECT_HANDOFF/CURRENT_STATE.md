@@ -2,32 +2,42 @@
 
 ## Read this first in a new development chat
 
-Current product line: **V0.1 — first playable vertical slice**.
+Current product line: **V0.2 — deep narrowing / specific-food slice**.
 
 The repository is the source of truth. Preserve working behavior before adding scope.
 
 ### Current loop
 
-Start → choose profile mode → restaurant-first or sensory-first questions → react → narrow → three-result shortlist → select or reject → save result locally.
+Start → choose profile mode → brief restaurant probe or sensory-first questions → broad sensory narrowing → family/format narrowing → preparation/ingredient/detail questions → exact candidate questions when useful → three-result shortlist → select/reject → save locally.
 
-### Implemented in V0.1
+### Implemented through V0.2
 
-- Seven reaction states: Definitely, Sure, Shrug, Ehhh, Nnngh, No, Absolutely Not.
-- Ambiguous reactions remain separate numeric signals.
-- Per-profile lightweight learning adjusts only ambiguous reaction weighting.
-- Explicit No/Absolutely Not behavior is never overridden by learned history.
-- Normal mode begins with establishment questions and then changes strategy.
-- “Nothing sounds good” mode skips establishment questions and asks six broad trait questions.
-- Question selection prefers traits that split the remaining food candidates.
-- Results show at most three candidates with compatibility labels.
-- User can reject a result and force recalculation.
-- Local-only persistence; no account or backend.
-- Bartlesville, Oklahoma starter restaurant data is isolated in `src/data/restaurants.js`.
+- Seven reactions preserved exactly: Definitely, Sure, Shrug, Ehhh, Nnngh, No, Absolutely Not.
+- Ambiguous reactions remain distinct learned signals.
+- Explicit `No` on an explicit trait/property eliminates that property for the current session; uncertain reactions never do.
+- Direct candidate `No`/`Absolutely Not` eliminates that exact item. `Absolutely Not` also penalizes close family/subfamily similarity.
+- Normal sessions can ask up to 24 questions instead of V0.1's 9.
+- “Nothing sounds good” stays intentionally fast at 7 broad questions before a shortlist.
+- Restaurant interrogation stops after two weak reactions and changes strategy.
+- Question depth is staged: broad sensory → family/format → preparation/ingredient → branch-specific detail.
+- Branch-specific prompts are gated. Cake questions such as berries/cream/frosting only appear when cake is a meaningful portion of the remaining pool.
+- Once the pool is small enough, the app asks about exact candidates instead of stopping at a generic family.
+- Food seed expanded from 30 flat candidates to 104 specific/actionable candidates across chicken, burgers, Mexican, pizza, breakfast, pasta/comfort, sandwiches/fresh, Asian-style dishes, seafood, savory sides/snacks, frozen desserts, cake, cheesecake, cookies, brownies, and donuts.
+- Walmart Chantilly & Berries cake exists as a specific candidate leaf to prove grocery-bakery specificity.
+- Candidate metadata now includes `family` and `subfamily` in addition to tags and establishments.
+- Selection learning now records family/tag affinity as a light prior while preserving hard-rejection authority.
+- Existing V0.1 local profiles are extended in place; the localStorage key is unchanged.
+- Results remain approximately three specific survivors and retain “Which sounds least bad?” / continued narrowing.
+- Local-only; no auth, backend, restaurant API, location permission, or cloud database.
 
-### Next priorities after player testing
+### Regression state
 
-1. Tune reaction weights from real sessions rather than adding more features.
-2. Observe whether the first four establishment questions feel useful or repetitive.
-3. Improve candidate/tag coverage where the engine repeatedly reaches weak shortlists.
-4. Add a tiny editable “restaurants I actually use” setup only if the static starter list becomes a constraint.
-5. Do not add authentication, cloud sync, restaurant APIs, maps, or location permission until the decision loop is proven.
+V0.2 overlay currently passes 13/13 Node regression tests, including dataset uniqueness, specific Chantilly leaf, ambiguous reaction ordering/learning, trait and exact-item hard rejection, deeper normal questioning, fast-mode cap, restaurant strategy switching, and branch-specific cake-question eligibility.
+
+### Next player-testing priorities
+
+1. Run real sessions and note whether 24 questions feels useful or tiring; do not shorten only because the number looks large.
+2. Identify branches that still land on a generic result and deepen only those branches.
+3. Expand establishment-specific leaves based on foods Mavyy and partner actually encounter.
+4. Tune branch-specific wording so questions sound like Mavyy helping someone choose, not a taxonomy quiz.
+5. Add result diversity rules only if three near-duplicates become frustrating; specificity is currently more important than artificial variety.

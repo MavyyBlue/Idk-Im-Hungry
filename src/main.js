@@ -10,7 +10,8 @@ let profile = loadProfile(mode);
 let session = null;
 let currentQuestion = null;
 
-const escapeHtml = (value='') => String(value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+const escapeHtml = (value='') => String(value).replace(/[&<>'\"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[char]));
+const titleCase = (value='') => value.split('-').map((part) => part ? part[0].toUpperCase() + part.slice(1) : '').join(' ');
 
 function setMode(nextMode) {
   mode = nextMode;
@@ -28,7 +29,7 @@ function renderStart() {
         <div class="logo-bubble">idk?</div>
         <p class="eyebrow">food, without the interrogation</p>
         <h1>Idk, I’m Hungry</h1>
-        <p class="lede">You don’t have to know what you want. Just react.</p>
+        <p class="lede">You don’t have to know what you want. Just react. I’ll keep drilling until the options are actually specific.</p>
       </section>
 
       <section class="mode-switch" aria-label="Who are we choosing for?">
@@ -40,7 +41,7 @@ function renderStart() {
         <button class="primary-action" data-start="normal">Help me choose</button>
         <button class="panic-action" data-start="fast">
           <span>I’m hungry and nothing sounds good</span>
-          <small>Skip restaurants. Ask me the broad stuff.</small>
+          <small>Seven broad questions, then a shortlist.</small>
         </button>
       </section>
 
@@ -69,7 +70,8 @@ function advance() {
 }
 
 function renderQuestion() {
-  const progress = Math.round((session.questionCount / session.maxQuestions) * 100);
+  const progress = Math.min(100, Math.round((session.questionCount / session.maxQuestions) * 100));
+  const phase = currentQuestion.type === 'candidate' ? 'Getting specific.' : currentQuestion.type === 'restaurant' ? 'Starting broad.' : session.questionCount >= 8 ? 'Narrowing the details.' : 'Gut reaction. Don’t overthink it.';
   app.innerHTML = `
     <main class="screen question-screen">
       <header class="session-header">
@@ -77,11 +79,11 @@ function renderQuestion() {
         <span>${mode === 'self' ? 'For me' : 'Helping someone'}</span>
       </header>
       <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
-      <p class="possibility-count"><span>${remainingCount(session)}</span> possibilities still alive</p>
+      <p class="possibility-count"><span>${remainingCount(session)}</span> specific possibilities still alive</p>
 
       <section class="question-card" aria-live="polite">
         <div class="question-icon">${currentQuestion.icon || '🍴'}</div>
-        <p class="question-kicker">Gut reaction. Don’t overthink it.</p>
+        <p class="question-kicker">${escapeHtml(phase)}</p>
         <h2>${escapeHtml(currentQuestion.prompt)}</h2>
       </section>
 
@@ -94,7 +96,11 @@ function renderQuestion() {
   app.querySelectorAll('[data-reaction]').forEach((button) => {
     button.addEventListener('click', () => {
       button.classList.add('pressed');
-      applyReaction(session, currentQuestion, button.dataset.reaction);
+      const reactionId = button.dataset.reaction;
+      applyReaction(session, currentQuestion, reactionId);
+      if (currentQuestion.type === 'candidate' && ['no','absolutely-not'].includes(reactionId)) {
+        profile = recordFoodRejection(mode, profile, currentQuestion.candidateId);
+      }
       setTimeout(advance, 90);
     });
   });
@@ -119,7 +125,7 @@ function renderResults() {
       <header class="results-header">
         <p class="eyebrow">I’m not pretending I can read minds.</p>
         <h1>Which sounds least bad?</h1>
-        <p>These are the strongest survivors.</p>
+        <p>These are the strongest specific survivors. Still too broad? Keep drilling.</p>
       </header>
       <section class="shortlist">
         ${shortlist.map((item) => {
@@ -129,6 +135,7 @@ function renderResults() {
             <div class="result-main">
               <div class="result-title-row"><h2>${escapeHtml(item.name)}</h2><span>${item.compatibility}%</span></div>
               <p class="match-label">${item.label}</p>
+              <p class="food-path">${escapeHtml(titleCase(item.family))} · ${escapeHtml(titleCase(item.subfamily))}</p>
               <div class="match-track"><div class="match-fill" style="width:${item.compatibility}%"></div></div>
               ${places ? `<p class="places">Try: ${escapeHtml(places)}</p>` : ''}
               <div class="result-actions">
@@ -139,13 +146,13 @@ function renderResults() {
           </article>`;
         }).join('')}
       </section>
-      <button class="text-button centered" data-action="narrow">Keep narrowing</button>
+      <button class="text-button centered" data-action="narrow">Keep drilling</button>
     </main>`;
 
   app.querySelectorAll('[data-pick]').forEach((button) => button.addEventListener('click', () => chooseFood(button.dataset.pick)));
   app.querySelectorAll('[data-nope]').forEach((button) => button.addEventListener('click', () => rejectResult(button.dataset.nope)));
   app.querySelector('[data-action="narrow"]').addEventListener('click', () => {
-    session.maxQuestions += 3;
+    session.maxQuestions += 4;
     advance();
   });
 }
@@ -166,7 +173,7 @@ function chooseFood(candidateId) {
       <div class="selected-emoji">${candidate.emoji}</div>
       <p class="eyebrow">decision made</p>
       <h1>${escapeHtml(candidate.name)}</h1>
-      <p>I’ll remember that this one survived your reactions.</p>
+      <p>I’ll remember the family, details, and ambiguous reactions that led here.</p>
       <button class="primary-action" data-action="again">Choose again</button>
       <button class="text-button centered" data-action="home">Back home</button>
     </main>`;

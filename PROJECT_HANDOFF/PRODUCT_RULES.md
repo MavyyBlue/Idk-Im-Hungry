@@ -10,3 +10,7 @@
 8. Make the core loop excellent before adding infrastructure.
 9. Preserve working functionality during refactors.
 10. Product decisions are collaborative with Mavyy; do not genericize the app’s unusual reaction vocabulary.
+11. A food family is not automatically a result. “Cake,” “burger,” “chicken,” “Mexican,” etc. are narrowing territory; keep drilling when useful until results are concrete enough to obtain/eat.
+12. Deep questions must be context-aware. Do not ask frosting questions in a burger-heavy pool or taco-shell questions in a dessert-heavy pool.
+13. Fast “nothing sounds good” mode is intentionally shallow; normal mode is allowed to be obsessive and specific.
+14. Grocery/store food is first-class alongside restaurants when it represents a realistic choice.
